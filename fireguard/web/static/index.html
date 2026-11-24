@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>FireGuard — Configurable Firewall Manager</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <h1>FireGuard</h1>
+      <span class="badge badge-safe">Dry-Run Default</span>
+    </div>
+    <div class="controls">
+      <label>Target Backend:
+        <select id="backendSelect">
+          <option value="auto">Auto-detect</option>
+          <option value="linux-nftables">Linux (nftables)</option>
+          <option value="windows-defender">Windows Defender Firewall</option>
+        </select>
+      </label>
+      <div class="tabs">
+        <button class="tab active" data-tab="simple">Simple View</button>
+        <button class="tab" data-tab="advanced">Advanced View</button>
+        <button class="tab" data-tab="audit">Audit Log</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+    <div id="alertBox" class="alert hidden"></div>
+
+    <section class="card notice">
+      <strong>Platform & Safety Notice:</strong> Changes are saved to your local policy file only.
+      Live system rules are <strong>never</strong> modified without an explicit preview and confirmation.
+      Domain-name blocking is intentionally excluded because DNS TTLs, encrypted DNS (DoH/DoT), CDNs, and proxies make IP-based domain blocking unreliable.
+    </section>
+
+    <!-- SIMPLE VIEW -->
+    <section id="tab-simple" class="tab-panel active">
+      <div class="grid-2">
+        <div class="card">
+          <h2>Quick Add Rule</h2>
+          <form id="quickRuleForm">
+            <label>Rule Name
+              <input type="text" id="qName" placeholder="e.g. Allow HTTPS or Block Suspicious IP" required />
+            </label>
+            <div class="row">
+              <label>Direction
+                <select id="qDir">
+                  <option value="inbound">Inbound</option>
+                  <option value="outbound">Outbound</option>
+                </select>
+              </label>
+              <label>Action
+                <select id="qAction">
+                  <option value="allow">Allow</option>
+                  <option value="block">Block</option>
+                  <option value="log">Log only</option>
+                </select>
+              </label>
+              <label>IP Version
+                <select id="qIpVer">
+                  <option value="any">IPv4 &amp; IPv6</option>
+                  <option value="ipv4">IPv4 only</option>
+                  <option value="ipv6">IPv6 only</option>
+                </select>
+              </label>
+            </div>
+            <div class="row">
+              <label>Protocol
+                <select id="qProto">
+                  <option value="tcp">TCP</option>
+                  <option value="udp">UDP</option>
+                  <option value="icmp">ICMP</option>
+                  <option value="icmpv6">ICMPv6</option>
+                  <option value="any">Any</option>
+                </select>
+              </label>
+              <label>Destination Port(s)
+                <input type="text" id="qDstPort" placeholder="e.g. 443 or 8000-8080" />
+              </label>
+              <label>Source Port(s)
+                <input type="text" id="qSrcPort" placeholder="optional" />
+              </label>
+            </div>
+            <div class="row">
+              <label>Source IP / CIDR
+                <input type="text" id="qSrcIp" placeholder="e.g. 192.168.1.0/24" />
+              </label>
+              <label>Destination IP / CIDR
+                <input type="text" id="qDstIp" placeholder="optional" />
+              </label>
+            </div>
+            <div class="row">
+              <label>Interface
+                <input type="text" id="qIface" placeholder="e.g. eth0" />
+              </label>
+              <label>Application (Windows only)
+                <input type="text" id="qApp" placeholder="e.g. C:\App\tool.exe" />
+              </label>
+              <label>Expires At (UTC ISO)
+                <input type="text" id="qExpires" placeholder="2026-12-31T23:59:00Z" />
+              </label>
+            </div>
+            <button type="submit" class="btn btn-primary">Add Rule to Policy</button>
+          </form>
+        </div>
+
+        <div class="card">
+          <h2>Starter Policies &amp; Actions</h2>
+          <p class="muted">Load a starter template into your draft policy (never auto-applied).</p>
+          <div id="startersList" class="stack"></div>
+          <hr />
+          <h3>Preview &amp; Apply</h3>
+          <div class="row">
+            <button id="btnPreview" class="btn btn-secondary">Dry-Run Preview</button>
+            <button id="btnApply" class="btn btn-danger">Apply to Live Firewall...</button>
+            <button id="btnRollback" class="btn btn-warning">Rollback Last Snapshot</button>
+          </div>
+          <div id="rollbackBanner" class="alert alert-warn hidden">
+            <span>Live rules applied! Confirm connectivity within <strong id="rbTimer">60</strong>s or changes will auto-rollback.</span>
+            <button id="btnConfirmConn" class="btn btn-primary">Confirm Connectivity</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Ordered Rules (First-Match-Wins)</h2>
+        <div id="validationBox"></div>
+        <div id="rulesList"></div>
+      </div>
+    </section>
+
+    <!-- ADVANCED VIEW -->
+    <section id="tab-advanced" class="tab-panel">
+      <div class="grid-2">
+        <div class="card">
+          <h2>System Baseline &amp; Defaults</h2>
+          <form id="defaultsForm">
+            <div class="row">
+              <label>Default Inbound
+                <select id="dInbound">
+                  <option value="block">Block</option>
+                  <option value="allow">Allow</option>
+                </select>
+              </label>
+              <label>Default Outbound
+                <select id="dOutbound">
+                  <option value="allow">Allow</option>
+                  <option value="block">Block</option>
+                </select>
+              </label>
+              <label>Rollback Timeout (s)
+                <input type="number" id="dTimeout" min="5" max="600" value="60" />
+              </label>
+            </div>
+            <label class="check"><input type="checkbox" id="dLoopback" /> Allow Loopback (127.0.0.0/8, ::1)</label>
+            <label class="check"><input type="checkbox" id="dEstablished" /> Allow Established / Related Connections</label>
+            <label class="check"><input type="checkbox" id="dIpv6" /> Handle IPv4 &amp; IPv6 Consistently</label>
+            <button type="submit" class="btn btn-primary">Save Defaults</button>
+          </form>
+        </div>
+
+        <div class="card">
+          <h2>Traffic Simulator (Dry-Run)</h2>
+          <form id="simForm">
+            <div class="row">
+              <label>Direction
+                <select id="sDir">
+                  <option value="inbound">Inbound</option>
+                  <option value="outbound">Outbound</option>
+                </select>
+              </label>
+              <label>Protocol
+                <select id="sProto">
+                  <option value="tcp">TCP</option>
+                  <option value="udp">UDP</option>
+                  <option value="icmp">ICMP</option>
+                  <option value="icmpv6">ICMPv6</option>
+                </select>
+              </label>
+            </div>
+            <div class="row">
+              <label>Source IP <input type="text" id="sSrcIp" value="203.0.113.10" required /></label>
+              <label>Dest IP <input type="text" id="sDstIp" value="192.168.1.50" required /></label>
+              <label>Dest Port <input type="number" id="sDstPort" value="22" /></label>
+            </div>
+            <label class="check"><input type="checkbox" id="sEst" /> Established connection</label>
+            <button type="submit" class="btn btn-secondary">Simulate Packet</button>
+          </form>
+          <pre id="simResult" class="code-box"></pre>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <h2>Dry-Run Native Script Preview</h2>
+          <pre id="previewScript" class="code-box">Click "Dry-Run Preview" to render native OS commands.</pre>
+        </div>
+        <div class="card">
+          <h2>Import / Export Policy JSON</h2>
+          <textarea id="jsonBox" rows="12" class="code-box"></textarea>
+          <div class="row">
+            <button id="btnExport" class="btn btn-secondary">Refresh Export</button>
+            <button id="btnImport" class="btn btn-primary">Validate &amp; Import JSON</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- AUDIT VIEW -->
+    <section id="tab-audit" class="tab-panel">
+      <div class="card">
+        <h2>Audit Log</h2>
+        <button id="btnRefreshAudit" class="btn btn-secondary">Refresh</button>
+        <pre id="auditBox" class="code-box"></pre>
+      </div>
+    </section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>
