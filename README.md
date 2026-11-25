@@ -80,3 +80,7 @@ For architecture, precedence rules, and platform limitations, see [docs/ARCHITEC
 ```bash
 python3 -m unittest discover -s tests -v
 ```
+
+## Licence
+
+[MIT](LICENSE) © 2026 Skepta.
